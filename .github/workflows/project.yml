@@ -1,0 +1,71 @@
+name: CI/CD for Blogging API
+
+on:
+  push:
+    branches:
+      - features
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Set up Rust
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-unknown-linux-gnu
+
+      # Install Dependencies
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql libpq-dev
+          cargo install diesel_cli --no-default-features --features postgres
+
+      # Run Diesel migrations
+      - name: Run database migrations
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: diesel migration run
+
+      # Run Tests
+      - name: Run tests
+        run: cargo test --verbose
+
+      # Run Linter
+      - name: Run clippy linter
+        run: cargo clippy -- -D warnings
+
+      # Run Formatter Check
+      - name: Check formatting
+        run: cargo fmt -- --check
+
+  merge-to-main:
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      # Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Configure Git
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Merge features to main
+      - name: Merge to main branch
+        run: |
+          git checkout main
+          git merge --no-ff features
+          git push origin main
